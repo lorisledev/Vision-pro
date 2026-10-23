@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Launcher AR</title>
+<style>
+:root{color-scheme:dark;--glass:rgba(255,255,255,.16);--blur:22px;--txt:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%;margin:0;overflow:hidden;background:#0b0f1a;color:var(--txt);font-family:-apple-system,"SF Pro Display",Segoe UI,Roboto,sans-serif;touch-action:none}
+video,#fallback{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+#fallback{background:radial-gradient(circle at 30% 20%,#3a4a8a,#10162b 60%,#06080f)}
+#shade{position:fixed;inset:0;background:rgba(0,0,0,.18);z-index:1}
+#scene{position:fixed;inset:0;perspective:700px;z-index:2;overflow:hidden}
+#ring{position:absolute;left:50%;top:50%;width:0;height:0;transform-style:preserve-3d}
+.app{position:absolute;width:130px;margin:-65px 0 0 -65px;text-align:center;transform-style:preserve-3d;transition:filter .2s}
+.ico{width:130px;height:130px;border-radius:50%;display:grid;place-items:center;font-size:62px;background:var(--glass);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));border:1.5px solid rgba(255,255,255,.35);box-shadow:0 14px 40px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.5);transition:transform .2s}
+.app span{display:block;margin-top:10px;font-size:20px;font-weight:600;text-shadow:0 2px 8px rgba(0,0,0,.6);opacity:0;transition:opacity .2s}
+.app.gaze .ico{transform:scale(1.18);background:rgba(255,255,255,.32)}
+.app.gaze span{opacity:1}
+#dot{position:fixed;left:50%;top:50%;width:14px;height:14px;margin:-7px;border-radius:50%;background:rgba(255,255,255,.9);box-shadow:0 0 0 6px rgba(255,255,255,.25);z-index:5;pointer-events:none;transition:transform .15s}
+#dot.on{transform:scale(1.8)}
+#hud{position:fixed;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom,0px));text-align:center;font-size:14px;opacity:.8;z-index:4;text-shadow:0 1px 6px #000;pointer-events:none}
+#win{position:fixed;left:50%;top:50%;width:min(88vw,360px);transform:translate(-50%,-50%) scale(.6);opacity:0;pointer-events:none;z-index:10;border-radius:30px;background:var(--glass);backdrop-filter:blur(calc(var(--blur) + 8px));-webkit-backdrop-filter:blur(calc(var(--blur) + 8px));border:1.5px solid rgba(255,255,255,.35);box-shadow:0 30px 80px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.5);transition:transform .35s cubic-bezier(.2,1.2,.3,1),opacity .25s;overflow:hidden}
+#win.open{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
+#bar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;font-weight:600;font-size:17px}
+#x{width:34px;height:34px;border-radius:50%;border:0;background:rgba(255,255,255,.25);color:#fff;font-size:18px}
+#body{padding:6px 18px 22px;min-height:220px}
+#start{position:fixed;inset:0;z-index:20;display:grid;place-content:center;gap:18px;text-align:center;background:rgba(5,8,18,.75);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+#start h1{margin:0;font-size:30px;font-weight:700}
+#start p{margin:0;opacity:.75;max-width:280px}
+.btn{border:0;border-radius:999px;padding:16px 34px;font-size:18px;font-weight:600;background:#fff;color:#111}
+.big{font-size:56px;font-weight:200;text-align:center;padding:40px 0}
+.calc{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.calc button,.calc div{border:0;border-radius:16px;padding:14px 0;font-size:20px;background:rgba(255,255,255,.2);color:#fff;text-align:center}
+.calc .scr{grid-column:1/5;text-align:right;padding:14px;font-size:30px;background:rgba(0,0,0,.25)}
+textarea{width:100%;height:200px;border-radius:16px;border:0;padding:12px;background:rgba(0,0,0,.25);color:#fff;font-size:17px;resize:none;user-select:text}
+#arena{position:relative;height:220px;border-radius:16px;background:rgba(0,0,0,.2);overflow:hidden}
+.b{position:absolute;width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff,#7fc8ff);border:0}
+input[type=range]{width:100%}
+</style>
+</head>
+<body>
+<div id="fallback"></div>
+<video id="cam" autoplay playsinline muted></video>
+<div id="shade"></div>
+<div id="scene"><div id="ring"></div></div>
+<div id="dot"></div>
+<div id="hud">Bouge ton téléphone pour regarder autour · touche pour ouvrir</div>
+<div id="win"><div id="bar"><span id="ttl"></span><button id="x">✕</button></div><div id="body"></div></div>
+<div id="start"><h1>Launcher AR</h1><p>Autorise la caméra et les capteurs de mouvement pour entrer dans l’espace.</p><button class="btn" id="go">Entrer</button></div>
+<script>
+const $=s=>document.querySelector(s);
+const apps=[
+{n:'Horloge',e:'🕒'},{n:'Calculette',e:'🧮'},{n:'Notes',e:'📝'},
+{n:'Bulles',e:'🫧'},{n:'Minuteur',e:'⏱️'},{n:'Réglages',e:'⚙️'}];
+const ring=$('#ring'),els=[];
+apps.forEach((a,i)=>{
+ const col=i%3,row=Math.floor(i/3),ang=(col-1)*30,y=row*190-95;
+ const d=document.createElement('div');d.className='app';
+ d.style.transform='rotateY('+ang+'deg) translateZ(-520px) translateY('+y+'px)';
+ d.innerHTML='<div class="ico">'+a.e+'</div><span>'+a.n+'</span>';
+ d.addEventListener('click',e=>{e.stopPropagation();openApp(i)});
+ ring.appendChild(d);els.push(d);
+});
+let yaw=0,pitch=0,ty=0,tp=0,dragX=0,dragY=0,a0=null,b0=null,gaze=-1;
+function orient(e){
+ if(e.alpha==null)return;
+ if(a0===null){a0=e.alpha;b0=e.beta}
+ let da=e.alpha-a0;if(da>180)da-=360;if(da<-180)da+=360;
+ ty=da;tp=-(e.beta-b0);
+}
+function loop(){
+ const Y=ty+dragX,P=Math.max(-40,Math.min(40,tp+dragY));
+ yaw+=(Y-yaw)*.15;pitch+=(P-pitch)*.15;
+ ring.style.transform='rotateX('+(-pitch)+'deg) rotateY('+yaw+'deg)';
+ const cx=innerWidth/2,cy=innerHeight/2;let best=-1,bd=70;
+ els.forEach((el,i)=>{const r=el.firstChild.getBoundingClientRect();
+  if(r.width<10)return;
+  const d=Math.hypot(r.left+r.width/2-cx,r.top+r.height/2-cy);
+  if(d<bd){bd=d;best=i}});
+ if(best!==gaze){els.forEach((el,i)=>el.classList.toggle('gaze',i===best));gaze=best;$('#dot').classList.toggle('on',best>=0)}
+ requestAnimationFrame(loop);
+}
+let ds=null;
+addEventListener('pointerdown',e=>{ds={x:e.clientX,y:e.clientY,dx:dragX,dy:dragY,m:false}});
+addEventListener('pointermove',e=>{if(!ds)return;const mx=e.clientX-ds.x,my=e.clientY-ds.y;
+ if(Math.abs(mx)+Math.abs(my)>8)ds.m=true;
+ if(ds.m&&!$('#win').classList.contains('open')){dragX=ds.dx-mx*.15;dragY=ds.dy-my*.12}});
+addEventListener('pointerup',()=>{
+ if(ds&&!ds.m&&gaze>=0&&!$('#win').classList.contains('open'))openApp(gaze);ds=null});
+const win=$('#win'),body=$('#body');let tick=null;
+function openApp(i){
+ clearInterval(tick);$('#ttl').textContent=apps[i].e+'  '+apps[i].n;body.innerHTML='';
+ ([clock,calc,notes,bubbles,timer,settings][i])();win.classList.add('open');
+}
+$('#x').onclick=()=>{win.classList.remove('open');clearInterval(tick)};
+function clock(){body.innerHTML='<div class="big" id="t"></div>';
+ const u=()=>{$('#t').textContent=new Date().toLocaleTimeString('fr-FR')};u();tick=setInterval(u,1000)}
+function calc(){let s='';body.innerHTML='<div class="calc"><div class="scr" id="sc">0</div></div>';
+ const g=body.firstChild;
+ '7 8 9 ÷ 4 5 6 × 1 2 3 − C 0 = +'.split(' ').forEach(k=>{
+  const b=document.createElement('button');b.textContent=k;
+  b.onclick=()=>{
+   if(k==='C')s='';
+   else if(k==='='){try{s=String(eval(s.replace(/÷/g,'/').replace(/×/g,'*').replace(/−/g,'-')))}catch(e){s='Erreur'}}
+   else s+=k;
+   $('#sc').textContent=s||'0'};
+  g.appendChild(b)})}
+function notes(){body.innerHTML='<textarea id="nt" placeholder="Écris ici…"></textarea>'}
+function bubbles(){body.innerHTML='<div id="sco" style="margin-bottom:8px;font-weight:600">Score : 0</div><div id="arena"></div>';
+ let sc=0;const ar=$('#arena');
+ tick=setInterval(()=>{const b=document.createElement('button');b.className='b';
+  b.style.left=Math.random()*(ar.clientWidth-46)+'px';b.style.top=Math.random()*(ar.clientHeight-46)+'px';
+  b.onclick=()=>{sc++;$('#sco').textContent='Score : '+sc;b.remove()};
+  ar.appendChild(b);setTimeout(()=>b.remove(),1400)},650)}
+function timer(){let t=60;body.innerHTML='<div class="big" id="t">60</div><div style="text-align:center"><button class="btn" id="st">Démarrer</button></div>';
+ $('#st').onclick=()=>{clearInterval(tick);t=60;tick=setInterval(()=>{t--;$('#t').textContent=t;if(t<=0){clearInterval(tick);$('#t').textContent='Terminé !';navigator.vibrate&&navigator.vibrate(300)}},1000)}}
+function settings(){body.innerHTML='<p>Flou du verre</p><input type="range" min="0" max="40" value="22" id="r1"><p>Transparence</p><input type="range" min="5" max="40" value="16" id="r2">';
+ $('#r1').oninput=e=>document.documentElement.style.setProperty('--blur',e.target.value+'px');
+ $('#r2').oninput=e=>document.documentElement.style.setProperty('--glass','rgba(255,255,255,'+e.target.value/100+')')}
+$('#go').onclick=async()=>{
+ try{
+  const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+  $('#cam').srcObject=s;$('#fallback').style.display='none';
+ }catch(e){$('#cam').style.display='none'}
+ try{
+  if(window.DeviceOrientationEvent&&DeviceOrientationEvent.requestPermission){await DeviceOrientationEvent.requestPermission()}
+  addEventListener('deviceorientation',orient);
+ }catch(e){}
+ $('#start').style.display='none';
+};
+$('#cam').style.display='block';
+loop();
+</script>
+</body>
+</html>
